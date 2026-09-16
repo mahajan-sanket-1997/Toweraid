@@ -1,7 +1,7 @@
 name: tower_aid
-description: TowerAid - emergency response for residential buildings.
+description: TowerAid - emergency response in residential buildings.
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.9.0
 
 flutter:
   uses-material-design: true
