@@ -22,6 +22,31 @@ jobs:
       - name: Generate Android project files
         run: flutter create --platforms=android .
 
+      - name: Enable Android internet access
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          text = p.read_text()
+          permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          if 'android.permission.INTERNET' not in text:
+              text = text.replace('<manifest ', '<manifest ', 1)
+              marker = '>'
+              idx = text.find(marker)
+              text = text[:idx+1] + '\n' + permission + text[idx+1:]
+              p.write_text(text)
+          print(p.read_text())
+          PY
+
+      - name: Verify Supabase endpoint is reachable
+        run: |
+          curl --fail --silent --show-error --retry 3 --connect-timeout 10 \
+            "https://rgekbxhoulkckzscgyqe.supabase.co/auth/v1/settings" \
+            -H "apikey: sb_publishable_95oqExTAhInV8vnPJfAL-A_kMHtWv5C" \
+            -H "Authorization: Bearer sb_publishable_95oqExTAhInV8vnPJfAL-A_kMHtWv5C" \
+            > /dev/null
+          echo "Supabase Auth endpoint is reachable."
+
       - name: Install dependencies
         run: flutter pub get
 
