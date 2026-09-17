@@ -24,7 +24,162 @@ class TowerAid extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     title: 'TowerAid',
     theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.red),
-    home: const Home(),
+    home: const AuthGate(),
+  );
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final client = SupabaseConfig.client;
+    if (client == null) return const ResidentSignIn();
+    return StreamBuilder<AuthState>(
+      stream: client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        final session = client.auth.currentSession;
+        return session == null ? const ResidentSignIn() : const Home();
+      },
+    );
+  }
+}
+
+class ResidentSignIn extends StatefulWidget {
+  const ResidentSignIn({super.key});
+  @override
+  State<ResidentSignIn> createState() => _ResidentSignInState();
+}
+
+class _ResidentSignInState extends State<ResidentSignIn> {
+  final phoneController = TextEditingController();
+  final otpController = TextEditingController();
+  bool otpSent = false;
+  bool loading = false;
+
+  @override
+  void dispose() {
+    phoneController.dispose();
+    otpController.dispose();
+    super.dispose();
+  }
+
+  String get phone {
+    final value = phoneController.text.trim();
+    if (value.startsWith('+')) return value;
+    return '+91${value.replaceAll(RegExp(r'\D'), '')}';
+  }
+
+  Future<void> sendOtp() async {
+    final client = SupabaseConfig.client;
+    if (client == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Supabase is not configured for this build.')));
+      return;
+    }
+    if (phone.replaceAll(RegExp(r'\D'), '').length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid mobile number.')));
+      return;
+    }
+    setState(() => loading = true);
+    try {
+      await client.auth.signInWithOtp(phone: phone);
+      if (mounted) {
+        setState(() => otpSent = true);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP sent to your mobile number.')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not send OTP: $e')));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> verifyOtp() async {
+    final client = SupabaseConfig.client;
+    if (client == null) return;
+    if (otpController.text.trim().length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter the 6-digit OTP.')));
+      return;
+    }
+    setState(() => loading = true);
+    try {
+      await client.auth.verifyOTP(phone: phone, token: otpController.text.trim(), type: OtpType.sms);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Welcome to TowerAid.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Invalid or expired OTP: $e')));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 30),
+                Container(
+                  width: 82, height: 82,
+                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(24)),
+                  child: const Icon(Icons.shield_outlined, color: Colors.white, size: 48),
+                ),
+                const SizedBox(height: 28),
+                const Text('TowerAid', style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                const Text('Emergency response for your residential community', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                const SizedBox(height: 36),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      const Text('Resident sign in', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      const Text('Use your registered mobile number to receive a secure OTP.'),
+                      const SizedBox(height: 22),
+                      TextField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        enabled: !otpSent && !loading,
+                        decoration: const InputDecoration(labelText: 'Mobile number', hintText: '9876543210', prefixText: '+91 ', border: OutlineInputBorder()),
+                      ),
+                      if (otpSent) ...[
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: otpController,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          decoration: const InputDecoration(labelText: '6-digit OTP', border: OutlineInputBorder()),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: loading ? null : (otpSent ? verifyOtp : sendOtp),
+                          child: loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(otpSent ? 'Verify & Continue' : 'Send OTP'),
+                        ),
+                      ),
+                      if (otpSent) ...[
+                        const SizedBox(height: 12),
+                        TextButton(onPressed: loading ? null : () => setState(() { otpSent = false; otpController.clear(); }), child: const Text('Change mobile number')),
+                      ],
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text('Your phone number is used only for secure authentication and emergency account identification.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 }
 
@@ -158,7 +313,11 @@ class _Home extends State<Home> {
       ])),
     ]);
     if (tab == 3) return ListView(padding: const EdgeInsets.all(16), children: [
-      card('Profile', const Text('TowerAid Resident\nTower A · Flat 904')),
+      card('Profile', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('TowerAid Resident\nTower A · Flat 904'),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(onPressed: () async { await SupabaseConfig.client?.auth.signOut(); }, icon: const Icon(Icons.logout), label: const Text('Sign out')),
+      ])),
       card('Realtime alerts', Text(SupabaseConfig.isConfigured ? '🟢 Connected — listening for emergencies' : '🟡 Demo mode — Supabase keys not configured')),
     ]);
     return ListView(padding: const EdgeInsets.all(16), children: [
