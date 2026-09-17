@@ -111,7 +111,6 @@ class _Home extends State<Home> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in before activating an emergency.')));
         return;
       }
-      // Development setup: the SQL migration provides a verified demo flat claim RPC.
       await client.rpc('claim_demo_flat', params: {'full_name_input': 'TowerAid Resident', 'phone_input': user.phone ?? ''});
       final row = await client.from('emergencies').insert({
         'society_id': '00000000-0000-0000-0000-000000000001',
@@ -190,7 +189,7 @@ class _Home extends State<Home> {
     card('👨‍💼 Admin dashboard', const Text('ABC Residency\nEmergency operations console')),
     Row(children: [Expanded(child: card('512', const Text('Flats'))), Expanded(child: card('486', const Text('Residents')))]),
     Row(children: [Expanded(child: card(incident == null ? '0' : '1', const Text('Active incidents'))), Expanded(child: card('Realtime', const Text('Alerts')))]),
-  ];
+  ]);
 
   void inspect(List<String> f) => showModalBottomSheet(context: context, builder: (_) => Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text('Flat ${f[0]}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), Text(f[1]), Text('Status: ${f[2]}'), FilledButton(onPressed: call, child: const Text('📞 Call resident')),
