@@ -28,7 +28,7 @@ jobs:
       - name: Build release APK
         env:
           SUPABASE_URL: https://rgekbxhoulkckzscgyqe.supabase.co
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_ANON_KEY: sb_publishable_95oqExTAhInV8vnPJfAL-A_kMHtWv5C
         run: |
           flutter build apk --release \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
