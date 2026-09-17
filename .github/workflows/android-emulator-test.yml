@@ -1,0 +1,68 @@
+name: Android Emulator Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  emulator-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project files
+        run: flutter create --platforms=android .
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install integration test dependency
+        run: flutter pub add --dev integration_test
+
+      - name: Create emulator smoke test
+        run: |
+          mkdir -p integration_test
+          cat > integration_test/app_smoke_test.dart <<'EOF'
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:integration_test/integration_test.dart';
+          import 'package:tower_aid/main.dart' as app;
+
+          void main() {
+            IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+            testWidgets('TowerAid launches and shows resident authentication', (tester) async {
+              app.main();
+              await tester.pumpAndSettle(const Duration(seconds: 5));
+
+              expect(find.text('TowerAid'), findsWidgets);
+              expect(find.textContaining('Resident'), findsWidgets);
+            });
+          }
+          EOF
+
+      - name: Run Android emulator smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SUPABASE_URL: https://rgekbxhoulkckzscgyqe.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          force-avd-creation: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          script: |
+            flutter test integration_test/app_smoke_test.dart \
+              --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+              --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
