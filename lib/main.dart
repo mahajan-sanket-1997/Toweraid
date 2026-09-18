@@ -36,13 +36,14 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final client = sb;
     if (client == null) return const ResidentAuth();
-    return StreamBuilder<AuthState>(
-      stream: client.auth.onAuthStateChange,
-      builder: (_, __) => client.auth.currentSession == null ? const ResidentAuth() : const Home(),
-    );
+    return StreamBuilder<AuthState>(stream: client.auth.onAuthStateChange,builder: (_, __) { if (client.auth.currentSession == null) return const ResidentAuth(); return FutureBuilder<bool>(future: _hasResident(client),builder: (_, s) { if (!s.hasData) return const Scaffold(body:Center(child:CircularProgressIndicator())); return s.data! ? const Home() : const RegistrationDetails(); }); });
   }
 }
 
+Future<bool> _hasResident(SupabaseClient client) async { try { final rows=await client.from('residents').select('id').eq('user_id',client.auth.currentUser!.id).limit(1); return rows.isNotEmpty; } catch(_){ return false; } }
+class RegistrationOption { final String societyId,societyName,buildingId,buildingName,floorId,flatId,flatNumber; final int floorNumber; const RegistrationOption({required this.societyId,required this.societyName,required this.buildingId,required this.buildingName,required this.floorId,required this.floorNumber,required this.flatId,required this.flatNumber}); factory RegistrationOption.fromMap(Map<String,dynamic> m)=>RegistrationOption(societyId:m['society_id'].toString(),societyName:m['society_name'].toString(),buildingId:m['building_id'].toString(),buildingName:m['building_name'].toString(),floorId:m['floor_id'].toString(),floorNumber:(m['floor_number'] as num).toInt(),flatId:m['flat_id'].toString(),flatNumber:m['flat_number'].toString()); }
+class RegistrationDetails extends StatefulWidget { const RegistrationDetails({super.key}); @override State<RegistrationDetails> createState()=>_RegistrationDetailsState(); }
+class _RegistrationDetailsState extends State<RegistrationDetails> { List<RegistrationOption> options=[]; RegistrationOption? selected; String residentType='OWNER'; bool loading=true,saving=false; @override void initState(){super.initState();_load();} Future<void> _load() async { try { final rows=await sb!.rpc('get_registration_options'); options=(rows as List).map((r)=>RegistrationOption.fromMap(Map<String,dynamic>.from(r))).toList(); if(options.isNotEmpty)selected=options.first; } catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Could not load society and flat details. Please try again.')));} finally{if(mounted)setState(()=>loading=false);} } Future<void> _complete() async { if(selected==null)return; setState(()=>saving=true); try { await sb!.rpc('complete_resident_registration',params:{'society_id_input':selected!.societyId,'building_id_input':selected!.buildingId,'floor_id_input':selected!.floorId,'flat_id_input':selected!.flatId,'resident_type_input':residentType}); if(mounted)Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder:(_)=>const Home()),(_)=>false); } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Registration could not be completed: $e')));} finally{if(mounted)setState(()=>saving=false);} } Widget pick(String label,String Function(RegistrationOption) f)=>DropdownButtonFormField<RegistrationOption>(value:selected,isExpanded:true,decoration:InputDecoration(labelText:label,border:const OutlineInputBorder()),items:options.map((o)=>DropdownMenuItem(value:o,child:Text(f(o)))).toList(),onChanged:saving?null:(v)=>setState(()=>selected=v)); @override Widget build(BuildContext context){ if(loading)return const Scaffold(body:Center(child:CircularProgressIndicator())); return Scaffold(appBar:AppBar(title:const Text('Complete registration'),actions:[IconButton(onPressed:()=>sb?.auth.signOut(),icon:const Icon(Icons.logout))]),body:SafeArea(child:Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:430),child:Card(child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[const Text('Tell us where you live',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:8),const Text('Choose your society, tower, floor and flat.'),const SizedBox(height:20),pick('Society',(o)=>o.societyName),const SizedBox(height:16),pick('Tower / Building',(o)=>o.buildingName),const SizedBox(height:16),pick('Floor',(o)=>'Floor '+o.floorNumber.toString()),const SizedBox(height:16),pick('Flat',(o)=>'Flat '+o.flatNumber),const SizedBox(height:16),DropdownButtonFormField<String>(value:residentType,decoration:const InputDecoration(labelText:'Resident type',border:OutlineInputBorder()),items:const[DropdownMenuItem(value:'OWNER',child:Text('Owner')),DropdownMenuItem(value:'TENANT',child:Text('Tenant')),DropdownMenuItem(value:'FAMILY_MEMBER',child:Text('Family member'))],onChanged:saving?null:(v)=>setState(()=>residentType=v!)),const SizedBox(height:22),FilledButton(onPressed:saving||selected==null?null:_complete,child:saving?const CircularProgressIndicator():const Text('Complete registration')),const SizedBox(height:8),const Text('Development mode: selected residents are verified immediately.',textAlign:TextAlign.center,style:TextStyle(fontSize:12,color:Colors.grey))]))))))))); } }
 class ResidentAuth extends StatefulWidget {
   const ResidentAuth({super.key});
   @override
@@ -116,15 +117,7 @@ class _ResidentAuthState extends State<ResidentAuth> {
     setState(() => loading = true);
     try {
       await client.auth.verifyOTP(email: email.text.trim(), token: otp, type: OtpType.email);
-      if (register && client.auth.currentUser != null) {
-        try {
-          await client.rpc('claim_demo_flat', params: {
-            'full_name_input': name.text.trim(),
-            'phone_input': email.text.trim(),
-          });
-        } catch (_) {}
-      }
-      if (mounted) msg(register ? 'Registration complete. Welcome to TowerAid!' : 'Welcome back to TowerAid.');
+      if (mounted) msg(register ? 'Email verified. Now complete your society and flat details.' : 'Welcome back to TowerAid.');
     } catch (e) {
       if (mounted) msg(friendlyError(e, verify: true));
     } finally {
@@ -246,7 +239,7 @@ class _HomeState extends State<Home> {
             incidentId = row['id']?.toString();
             status = 'ACTIVE';
           });
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: const Duration(seconds: 8), content: Text('🚨 $incident reported — Tower A · Floor 9 · Flat 904')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: const Duration(seconds: 8), content: Text('🚨 $incident reported — your registered flat')));
         },
       ).subscribe();
     }
@@ -275,9 +268,11 @@ class _HomeState extends State<Home> {
       return;
     }
     try {
-      await client.rpc('claim_demo_flat', params: {'full_name_input': user.userMetadata?['full_name'] ?? 'TowerAid Resident', 'phone_input': user.email ?? ''});
+      final contextRows = await client.rpc('get_my_resident_context');
+      if ((contextRows as List).isEmpty) throw Exception('Resident profile is incomplete');
+      final ctx = Map<String,dynamic>.from(contextRows.first);
       final type = label.replaceFirst(RegExp(r'^\S+\s*'), '').toUpperCase().replaceAll(' ', '_');
-      final row = await client.from('emergencies').insert({'society_id': demoSociety, 'reported_by': user.id, 'building_id': demoBuilding, 'floor_id': demoFloor, 'flat_id': demoFlat, 'type': type, 'description': 'Emergency activated from TowerAid'}).select('id,type').single();
+      final row = await client.from('emergencies').insert({'society_id': ctx['society_id'], 'reported_by': user.id, 'building_id': ctx['building_id'], 'floor_id': ctx['floor_id'], 'flat_id': ctx['flat_id'], 'type': type, 'description': 'Emergency activated from TowerAid'}).select('id,type').single();
       if (mounted) {
         setState(() { incident = type; incidentId = row['id'].toString(); status = 'ACTIVE'; });
         msg('🚨 Emergency sent to security.');
